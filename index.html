@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="app.js" defer></script>
+    <script type="module" src="firebase-config.js" defer></script>
+</head>
+<body>
+    <div id="login-container">
+        <h1>Join Chat</h1>
+        <input type="text" id="username" placeholder="Enter your name">
+        <select id="country">
+            <option value="India">India</option>
+            <option value="Nepal">Nepal</option>
+            <option value="Saudi Arabia">Saudi Arabia</option>
+            <option value="United States">United States</option>
+            <option value="United Kingdom">United Kingdom</option>
+            <option value="Japan">Japan</option>
+        </select>
+        <button id="join-button">Join Chat</button>
+    </div>
+    <div id="chat-container" style="display: none;">
+        <h1>Discussion Room</h1>
+        <div id="messages"></div>
+        <input type="text" id="message-input" placeholder="Type a message">
+        <button id="send-button">Send</button>
+    </div>
+</body>
+</html>
