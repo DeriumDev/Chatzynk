@@ -1,63 +1,100 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, query, onSnapshot, updateDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-app.js";
+
 import { firebaseConfig } from './firebase-config.js';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
-document.getElementById('join-button').addEventListener('click', async function() {
-    const username = document.getElementById('username').value.trim();
-    const country = document.getElementById('country').value;
+const loginContainer = document.getElementById('login-container');
+const chatContainer = document.getElementById('chat-container');
+const joinButton = document.getElementById('join-button');
+const sendButton = document.getElementById('send-button');
+const usernameInput = document.getElementById('username');
+const countrySelect = document.getElementById('country');
+const messageInput = document.getElementById('message-input');
+const messagesDiv = document.getElementById('messages');
+const contactList = document.getElementById('contact-list');
 
+let currentUser = null;
+
+joinButton.addEventListener('click', () => {
+    const username = usernameInput.value.trim();
+    const country = countrySelect.value;
+    
     if (username) {
-        document.getElementById('login-container').style.display = 'none';
-        document.getElementById('chat-container').style.display = 'block';
+        signInAnonymously(auth).then(() => {
+            onAuthStateChanged(auth, user => {
+                if (user) {
+                    currentUser = {
+                        uid: user.uid,
+                        username,
+                        country,
+                        status: 'online',
+                        lastActive: Date.now()
+                    };
 
-        try {
-            await addDoc(collection(db, 'messages'), {
-                username: 'System',
-                message: `${username} (${country}) joined the chat`,
-                timestamp: new Date()
+                    setDoc(doc(db, "users", user.uid), currentUser);
+                    loginContainer.style.display = 'none';
+                    chatContainer.style.display = 'block';
+                    loadContacts();
+                    loadMessages();
+                }
             });
-
-            loadMessages();
-        } catch (error) {
-            console.error("Error adding document: ", error);
-        }
+        });
     } else {
         alert('Please enter your name.');
     }
 });
 
-document.getElementById('send-button').addEventListener('click', async function() {
-    const messageInput = document.getElementById('message-input');
+sendButton.addEventListener('click', () => {
     const message = messageInput.value.trim();
-
     if (message) {
-        const username = document.getElementById('username').value.trim();
-        try {
-            await addDoc(collection(db, 'messages'), {
-                username: username,
-                message: message,
-                timestamp: new Date()
-            });
-            messageInput.value = '';
-        } catch (error) {
-            console.error("Error adding document: ", error);
-        }
+        addDoc(collection(db, 'messages'), {
+            uid: currentUser.uid,
+            username: currentUser.username,
+            message,
+            timestamp: Date.now()
+        });
+        messageInput.value = '';
     }
 });
 
-function loadMessages() {
-    const q = query(collection(db, 'messages'), orderBy('timestamp'));
+function loadContacts() {
+    const q = query(collection(db, "users"));
     onSnapshot(q, (snapshot) => {
-        const messagesDiv = document.getElementById('messages');
-        messagesDiv.innerHTML = '';
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            messagesDiv.innerHTML += `<p><strong>${data.username}:</strong> ${data.message}</p>`;
+        contactList.innerHTML = '';
+        snapshot.forEach(doc => {
+            const user = doc.data();
+            const li = document.createElement('li');
+            li.textContent = `${user.username} (${user.country}) - ${user.status}`;
+            li.style.color = user.status === 'online' ? 'green' : 'red';
+            contactList.appendChild(li);
         });
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 }
+
+function loadMessages() {
+    const q = query(collection(db, 'messages'));
+    onSnapshot(q, (snapshot) => {
+        messagesDiv.innerHTML = '';
+        snapshot.forEach(doc => {
+            const msg = doc.data();
+            const p = document.createElement('p');
+            p.textContent = `${msg.username}: ${msg.message}`;
+            messagesDiv.appendChild(p);
+        });
+    });
+}
+
+window.addEventListener('beforeunload', () => {
+    if (currentUser) {
+        updateDoc(doc(db, "users", currentUser.uid), {
+            status: 'offline',
+            lastActive: Date.now()
+        });
+    }
+});
