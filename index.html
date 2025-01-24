@@ -6,6 +6,7 @@
     <title>Kiter Chat App</title>
     <link rel="stylesheet" href="styles.css">
     <script type="module" src="app.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <script type="module" src="firebase-config.js" defer></script>
 </head>
 <body>
@@ -13,25 +14,55 @@
         <h1>Join Chat</h1>
         <input type="text" id="username" placeholder="Enter your name">
         <select id="country">
-            <option value="India">India</option>
-            <option value="Nepal">Nepal</option>
-            <option value="Saudi Arabia">Saudi Arabia</option>
-            <option value="United States">United States</option>
-            <option value="United Kingdom">United Kingdom</option>
-            <option value="Japan">Japan</option>
+            <option value="Argentina">Argentina</option>
+<option value="Australia">Australia</option>
+<option value="Bangladesh">Bangladesh</option>
+<option value="Brazil">Brazil</option>
+<option value="Canada">Canada</option>
+<option value="Chile">Chile</option>
+<option value="Colombia">Colombia</option>
+<option value="Egypt">Egypt</option>
+<option value="France">France</option>
+<option value="Germany">Germany</option>
+<option value="India">India</option>
+<option value="Indonesia">Indonesia</option>
+<option value="Italy">Italy</option>
+<option value="Japan">Japan</option>
+<option value="Malaysia">Malaysia</option>
+<option value="Mexico">Mexico</option>
+<option value="Nepal">Nepal</option>
+<option value="Nigeria">Nigeria</option>
+<option value="Pakistan">Pakistan</option>
+<option value="Peru">Peru</option>
+<option value="Philippines">Philippines</option>
+<option value="Russia">Russia</option>
+<option value="Saudi Arabia">Saudi Arabia</option>
+<option value="Singapore">Singapore</option>
+<option value="South Africa">South Africa</option>
+<option value="South Korea">South Korea</option>
+<option value="Spain">Spain</option>
+<option value="Thailand">Thailand</option>
+<option value="Turkey">Turkey</option>
+<option value="United Arab Emirates">United Arab Emirates</option>
+<option value="United Kingdom">United Kingdom</option>
+<option value="United States">United States</option>
+<option value="Vietnam">Vietnam</option>
+<option value="Zimbabwe">Zimbabwe</option>
         </select>
         <button id="join-button">Join Chat</button>
     </div>
     <div id="chat-container" style="display: none;">
-        <h1>Discussion Room</h1>
-        <div id="messages"></div>
+        <h1 id="room-title">Discussion Room</h1>
+    <div id="messages"></div>
+    <div style="display: flex; align-items: center;">
         <input type="text" id="message-input" placeholder="Type a message">
-        <button id="send-button">Send</button>
+        <button id="send-button"><i class="fas fa-paper-plane"></i></button>
     </div>
 
+        
     <!-- Adsterra Banner Ad -->
     <div id="ad-banner" style="position: fixed; bottom: 0; width: 100%; text-align: center; background-color: #f9f9f9; z-index: 1000;">
         <script type="text/javascript" src="//pl24008597.profitablecpmrate.com/e7/3e/99/e73e99af8503f0348403bfda9839da5d.js"></script>
     </div>
 </body>
-</html>
+    </html>
