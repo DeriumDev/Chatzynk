@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat App</title>
+    <meta name="viewport" content="width=device-width, user-scalable=no">
+    <title>Kiter Chat App</title>
     <link rel="stylesheet" href="styles.css">
-    <script type="module" src="firebase-config.js" defer></script>
     <script type="module" src="app.js" defer></script>
+    <script type="module" src="firebase-config.js" defer></script>
 </head>
 <body>
     <div id="login-container">
@@ -22,16 +22,16 @@
         </select>
         <button id="join-button">Join Chat</button>
     </div>
-
     <div id="chat-container" style="display: none;">
         <h1>Discussion Room</h1>
-        <div id="contacts">
-            <h3>Contacts</h3>
-            <ul id="contact-list"></ul>
-        </div>
         <div id="messages"></div>
         <input type="text" id="message-input" placeholder="Type a message">
         <button id="send-button">Send</button>
+    </div>
+
+    <!-- Adsterra Banner Ad -->
+    <div id="ad-banner" style="position: fixed; bottom: 0; width: 100%; text-align: center; background-color: #f9f9f9; z-index: 1000;">
+        <script type="text/javascript" src="//pl24008597.profitablecpmrate.com/e7/3e/99/e73e99af8503f0348403bfda9839da5d.js"></script>
     </div>
 </body>
 </html>
