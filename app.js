@@ -1,100 +1,125 @@
-import { getFirestore, collection, addDoc, getDocs, query, onSnapshot, updateDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-auth.js";
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.1.0/firebase-app.js";
-
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, setDoc, deleteDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-firestore.js";
 import { firebaseConfig } from './firebase-config.js';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
 
-const loginContainer = document.getElementById('login-container');
-const chatContainer = document.getElementById('chat-container');
-const joinButton = document.getElementById('join-button');
-const sendButton = document.getElementById('send-button');
-const usernameInput = document.getElementById('username');
-const countrySelect = document.getElementById('country');
-const messageInput = document.getElementById('message-input');
-const messagesDiv = document.getElementById('messages');
-const contactList = document.getElementById('contact-list');
+// Reference to the online users collection
+const onlineUsersCollection = collection(db, 'online_users');
 
-let currentUser = null;
+// Join Button Event Listener
+document.getElementById('join-button').addEventListener('click', async function() {
+    const username = document.getElementById('username').value.trim();
+    const country = document.getElementById('country').value;
 
-joinButton.addEventListener('click', () => {
-    const username = usernameInput.value.trim();
-    const country = countrySelect.value;
-    
     if (username) {
-        signInAnonymously(auth).then(() => {
-            onAuthStateChanged(auth, user => {
-                if (user) {
-                    currentUser = {
-                        uid: user.uid,
-                        username,
-                        country,
-                        status: 'online',
-                        lastActive: Date.now()
-                    };
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('chat-container').style.display = 'block';
 
-                    setDoc(doc(db, "users", user.uid), currentUser);
-                    loginContainer.style.display = 'none';
-                    chatContainer.style.display = 'block';
-                    loadContacts();
-                    loadMessages();
-                }
+        try {
+            // Set user as online in the 'online_users' collection
+            await setDoc(doc(db, 'online_users', username), {
+                username: username,
+                status: 'online',
+                lastActive: new Date()
             });
-        });
+
+            // Add system message that the user has joined
+            await addDoc(collection(db, 'messages'), {
+                username: 'System',
+                message: `${username} (${country}) joined the chat`,
+                timestamp: new Date()
+            });
+
+            // Load messages
+            loadMessages();
+        } catch (error) {
+            console.error("Error adding document: ", error);
+            alert('An error occurred. Please try again later.');
+        }
     } else {
         alert('Please enter your name.');
     }
 });
 
-sendButton.addEventListener('click', () => {
+// Send Button Event Listener
+document.getElementById('send-button').addEventListener('click', async function() {
+    const messageInput = document.getElementById('message-input');
     const message = messageInput.value.trim();
+
     if (message) {
-        addDoc(collection(db, 'messages'), {
-            uid: currentUser.uid,
-            username: currentUser.username,
-            message,
-            timestamp: Date.now()
-        });
-        messageInput.value = '';
+        const username = document.getElementById('username').value.trim();
+        try {
+            await addDoc(collection(db, 'messages'), {
+                username: username,
+                message: message,
+                timestamp: new Date()
+            });
+            messageInput.value = '';
+        } catch (error) {
+            console.error("Error adding document: ", error);
+            alert('An error occurred. Please try again later.');
+        }
     }
 });
 
-function loadContacts() {
-    const q = query(collection(db, "users"));
-    onSnapshot(q, (snapshot) => {
-        contactList.innerHTML = '';
-        snapshot.forEach(doc => {
-            const user = doc.data();
-            const li = document.createElement('li');
-            li.textContent = `${user.username} (${user.country}) - ${user.status}`;
-            li.style.color = user.status === 'online' ? 'green' : 'red';
-            contactList.appendChild(li);
-        });
-    });
-}
-
+// Load Messages from Firestore
 function loadMessages() {
-    const q = query(collection(db, 'messages'));
+    const q = query(collection(db, 'messages'), orderBy('timestamp'));
     onSnapshot(q, (snapshot) => {
+        const messagesDiv = document.getElementById('messages');
         messagesDiv.innerHTML = '';
-        snapshot.forEach(doc => {
-            const msg = doc.data();
-            const p = document.createElement('p');
-            p.textContent = `${msg.username}: ${msg.message}`;
-            messagesDiv.appendChild(p);
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const timestamp = new Date(data.timestamp.seconds * 1000);
+
+            // Check if the user is online
+            isUserOnline(data.username).then((isOnline) => {
+                const timestampColor = isOnline ? 'green' : 'red';
+
+                // Add message with timestamp color and size
+                messagesDiv.innerHTML += `
+                    <p>
+                        <strong>${data.username}:</strong> ${data.message}
+                        <span class="timestamp" style="color:${timestampColor}; font-size:small;">
+                            ${timestamp.toLocaleString()}
+                        </span>
+                    </p>`;
+            });
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+}
+
+// Check if User is Online (returns a Promise)
+function isUserOnline(username) {
+    return new Promise((resolve, reject) => {
+        const userRef = doc(onlineUsersCollection, username);
+        getDoc(userRef).then((docSnap) => {
+            if (docSnap.exists()) {
+                resolve(true); // User is online
+            } else {
+                resolve(false); // User is offline
+            }
+        }).catch((error) => {
+            console.error("Error checking user status: ", error);
+            reject(false);
         });
     });
 }
 
-window.addEventListener('beforeunload', () => {
-    if (currentUser) {
-        updateDoc(doc(db, "users", currentUser.uid), {
-            status: 'offline',
-            lastActive: Date.now()
+// Handle User Leaving Chat (Before Unload Event)
+window.addEventListener('beforeunload', function() {
+    const username = document.getElementById('username').value.trim();
+
+    if (username) {
+        // Remove user from 'online_users' when they leave
+        deleteDoc(doc(db, 'online_users', username)).then(() => {
+            console.log(`${username} removed from online users`);
+        }).catch((error) => {
+            console.error("Error removing user from online status: ", error);
         });
     }
 });
