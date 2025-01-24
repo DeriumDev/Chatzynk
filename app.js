@@ -23,15 +23,15 @@ const openDb = () => {
 };
 
 // Store the username in IndexedDB
-const storeUsername = async (username) => {
+const storeUsername = async (username, country) => {
     const db = await openDb();
     const transaction = db.transaction('users', 'readwrite');
     const store = transaction.objectStore('users');
-    store.put({ username });
+    store.put({ username, country });
     return transaction.complete;
 };
 
-// Check if the username exists in IndexedDB
+// Check if the username exists in IndexedDB for this device/browser
 const usernameExists = async (username) => {
     const db = await openDb();
     const store = db.transaction('users').objectStore('users');
@@ -58,17 +58,15 @@ document.getElementById('join-button').addEventListener('click', async function(
     const country = document.getElementById('country').value;
 
     if (username) {
-        // Check if the username already exists in IndexedDB
+        // Check if the username already exists in IndexedDB (for this device/browser)
         const exists = await usernameExists(username);
         if (exists) {
             alert('This username is already taken. Please choose a different one.');
             return;
         }
 
-        // Store the username in IndexedDB
-        await storeUsername(username);
-
-        // Store username in localStorage for auto-login
+        // Store the username in IndexedDB and localStorage for auto-login
+        await storeUsername(username, country);
         localStorage.setItem('username', username);
 
         // Hide login container and show chat container
