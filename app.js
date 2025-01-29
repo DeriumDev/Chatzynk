@@ -1,21 +1,32 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-app.js";
-import { getDatabase, ref, set, get, push, onChildAdded, onDisconnect } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-database.js";
+import { getDatabase, ref, set, get, push, onChildAdded, onDisconnect, onValue } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-database.js";
 import { firebaseConfig } from './firebase-config.js';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const rtdb = getDatabase(app);
-const setUserOnline = async (username) => {
-    if (!username) {
-        console.error("setUserOnline error: username is undefined or empty.");
-        return;
-    }
+const rtdb = getDatabase();
+
+// Function to track user online status
+const setUserOnline = (username) => {
+    if (!username) return;
 
     const userRef = ref(rtdb, `status/${username}`);
-    await set(userRef, { status: "online" });
+    const connectedRef = ref(rtdb, ".info/connected");
 
-    // Auto-set user offline when they disconnect
-    onDisconnect(userRef).set({ status: "offline" });
+    // Listen for connection status
+    onValue(connectedRef, (snapshot) => {
+        if (snapshot.val() === false) {
+            // Not connected
+            console.log("User disconnected from network");
+            return;
+        }
+
+        // Set user online
+        set(userRef, { status: "online" });
+
+        // Auto-set user offline on disconnect
+        onDisconnect(userRef).set({ status: "offline" });
+    });
 };
 
 const getUserStatus = async (username) => {
