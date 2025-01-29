@@ -1,8 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-app.js";
-import { 
-    getFirestore, collection, addDoc, onSnapshot, query, orderBy, 
-    doc, setDoc, updateDoc, serverTimestamp, getDocs 
-} from "https://www.gstatic.com/firebasejs/9.14.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-firestore.js";
 import { firebaseConfig } from './firebase-config.js';
 
 // Initialize Firebase
@@ -13,8 +10,8 @@ const db = getFirestore(app);
 const openDb = () => {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open('chatAppDB', 1);
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
+        request.onupgradeneeded = () => {
+            const db = request.result;
             if (!db.objectStoreNames.contains('users')) {
                 db.createObjectStore('users', { keyPath: 'username' });
             }
@@ -27,52 +24,24 @@ const openDb = () => {
 // Store the username in IndexedDB
 const storeUsername = async (username, country) => {
     const db = await openDb();
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction('users', 'readwrite');
-        const store = transaction.objectStore('users');
-        const request = store.put({ username, country });
-
-        request.onsuccess = () => resolve();
-        request.onerror = (error) => reject(error);
-    });
+    const transaction = db.transaction('users', 'readwrite');
+    const store = transaction.objectStore('users');
+    store.put({ username, country });
+    return transaction.complete;
 };
 
-// Check if the username exists in IndexedDB
-const usernameExists = async (username) => {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-        const store = db.transaction('users').objectStore('users');
-        const request = store.get(username);
-
-        request.onsuccess = () => resolve(!!request.result);
-        request.onerror = (error) => reject(error);
-    });
-};
-
-// Update Firestore user status
-const updateUserStatus = async (username, country, status) => {
-    const userRef = doc(db, "users", username);
-    await setDoc(userRef, {
-        username,
-        country,
-        status,
-        lastSeen: serverTimestamp(),
-    }, { merge: true });
-};
-
-// Handle user login
+// Handle user login (join)
 document.getElementById('join-button').addEventListener('click', async function() {
     const username = document.getElementById('username').value.trim();
     const country = document.getElementById('country').value.trim();
 
-    if (!username || !country) {
-        alert('Please enter both your name and country.');
+    if (!username) {
+        console.error("Login error: Username is empty");
         return;
     }
 
-    const exists = await usernameExists(username);
-    if (exists) {
-        alert('This username is already taken. Please choose a different one.');
+    if (!country) {
+        console.error("Login error: Country is empty");
         return;
     }
 
@@ -80,94 +49,122 @@ document.getElementById('join-button').addEventListener('click', async function(
     localStorage.setItem('username', username);
     localStorage.setItem('country', country);
 
+    await setUserStatus(username, 'online');
+
     document.getElementById('login-container').style.display = 'none';
     document.getElementById('chat-container').style.display = 'block';
 
-    await updateUserStatus(username, country, 'online');
-
-    await addDoc(collection(db, 'messages'), {
-        username: 'System',
-        country: country,
-        message: `${username} (${country}) joined the chat`,
-        timestamp: serverTimestamp()
-    });
-
     loadMessages();
 });
+// Handle user leaving (set status to offline)
+const handleUserLeaving = async () => {
+    const username = localStorage.getItem('username');
+    if (username) {
+        await setUserStatus(username, 'offline');
+    }
+};
 
-// Handle sending messages
-document.getElementById('send-button').addEventListener('click', async function() {
+// Listen for window close or reload
+window.addEventListener('beforeunload', handleUserLeaving);
+
+// Handle sending message
+document.getElementById('send-button').addEventListener('click', async function () {
     const messageInput = document.getElementById('message-input');
     const message = messageInput.value.trim();
     const username = localStorage.getItem('username');
     const country = localStorage.getItem('country');
 
-    if (!message || !username || !country) return;
-
-    await addDoc(collection(db, 'messages'), {
-        username,
-        country,
-        message,
-        timestamp: serverTimestamp()
-    });
-
-    messageInput.value = '';
+    if (message && username && country) {
+        try {
+            await addDoc(collection(db, 'messages'), {
+                username,
+                country,
+                message,
+                timestamp: new Date()
+            });
+            messageInput.value = ''; // Clear input
+        } catch (error) {
+            console.error("Error adding document: ", error);
+        }
+    }
 });
 
-// Load and display messages
-const loadMessages = async () => {
+// Load and display messages with user status
+async function loadMessages() {
     const q = query(collection(db, 'messages'), orderBy('timestamp'));
     onSnapshot(q, async (snapshot) => {
         const messagesDiv = document.getElementById('messages');
-        messagesDiv.innerHTML = '';
+        messagesDiv.innerHTML = ''; // Clear previous messages
 
-        // Fetch all users' statuses in one query
-        const usersSnapshot = await getDocs(collection(db, "users"));
-        const usersStatus = {};
-        usersSnapshot.forEach(user => {
-            usersStatus[user.id] = user.data().status || "offline";
+        const messages = snapshot.docs.map(doc => doc.data());
+
+        // Fetch user statuses in parallel
+        const statusPromises = messages.map(data =>
+            data.username && data.username !== 'System' 
+                ? getUserStatus(data.username) 
+                : Promise.resolve('offline')
+        );
+
+        const statuses = await Promise.all(statusPromises);
+
+        // Display messages
+        messages.forEach((data, index) => {
+            if (!data.username) return; // Skip if no username
+
+            const userStatusDot = statuses[index] === 'online' ? '🟢' : '🔴';
+            messagesDiv.innerHTML += `<p><strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message}</p>`;
         });
 
-        snapshot.docs.forEach((docSnapshot) => {
-            const data = docSnapshot.data();
-            const username = data.username;
-            const statusColor = usersStatus[username] === "online" ? "green" : "red";
-
-            messagesDiv.innerHTML += `
-                <p>
-                    <span style="color: ${statusColor}; font-size: 15px;">●</span>
-                    <strong>${username} (${data.country}):</strong> ${data.message}
-                </p>`;
-        });
-
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
     });
-};
+}
 
-// Check for auto-login when the page loads
-const checkAutoLogin = async () => {
-    const username = localStorage.getItem('username');
-    const country = localStorage.getItem('country');
 
-    if (username && country) {
-        document.getElementById('username').value = username;
-        document.getElementById('country').value = country;
-        document.getElementById('login-container').style.display = 'none';
-        document.getElementById('chat-container').style.display = 'block';
-
-        await updateUserStatus(username, country, 'online');
-        loadMessages();
+const setUserStatus = async (username, status) => {
+    if (!username) {
+        console.error("setUserStatus error: username is undefined or empty.");
+        return;
+    }
+    
+    try {
+        const safeUsername = encodeURIComponent(username); // Encode to avoid special character issues
+        const userRef = doc(db, 'users', safeUsername);
+        await setDoc(userRef, { status }, { merge: true });
+    } catch (error) {
+        console.error("Error setting user status: ", error);
     }
 };
 
-// Set user offline on window unload
-window.addEventListener("beforeunload", async () => {
+const getUserStatus = async (username) => {
+    if (!username) {
+        console.error("getUserStatus error: username is undefined or empty.");
+        return 'offline';
+    }
+    
+    try {
+        const safeUsername = encodeURIComponent(username);
+        const docRef = doc(db, 'users', safeUsername);
+        const docSnap = await getDoc(docRef);
+        return docSnap.exists() ? docSnap.data().status || 'offline' : 'offline';
+    } catch (error) {
+        console.error("Error fetching user status:", error);
+        return 'offline';
+    }
+};
+
+const checkAutoLogin = () => {
     const username = localStorage.getItem('username');
     const country = localStorage.getItem('country');
-    if (username && country) {
-        await updateUserStatus(username, country, 'offline');
-    }
-});
 
-// Auto-login check on page load
-checkAutoLogin();
+    if (!username || !country) {
+        console.error("Auto-login failed: username or country is missing");
+        return;
+    }
+
+    document.getElementById('username').value = username;
+    document.getElementById('country').value = country;
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('chat-container').style.display = 'block';
+
+    loadMessages();
+};
