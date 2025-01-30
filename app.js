@@ -5,7 +5,6 @@ import { firebaseConfig } from './firebase-config.js';
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const rtdb = getDatabase();
-
 // Function to track user online status
 const setUserOnline = (username) => {
     if (!username) return;
@@ -121,10 +120,7 @@ const checkAutoLogin = () => {
     document.getElementById('login-container').style.display = 'none';
     document.getElementById('chat-container').style.display = 'block';
 
-    setUserOnline(username); // ✅ Ensure user is online
-    loadMessages();
+    setUserOnline(username).then(() => {
+        loadMessages(); // Ensure messages load after user is online
+    });
 };
-
-
-
-
