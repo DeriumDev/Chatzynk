@@ -1,3 +1,4 @@
+/* General Styles */
 body {
     font-family: Arial, sans-serif;
     display: flex;
@@ -8,7 +9,16 @@ body {
     background-color: #f0f0f0;
 }
 
-#login-container, #chat-container {
+/* Login Container */
+#login-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
+#chat-container {
     text-align: center;
     padding: 20px;
     border-radius: 10px;
@@ -16,12 +26,46 @@ body {
     background-color: #fff;
 }
 
-#login-container {
+#chat-container {
     width: 300px;
 }
 
-#chat-container {
-    width: 300px;
+#login-container h1 {
+    font-size: 2rem;
+    color: #28a745; /* Bootstrap Primary Blue */
+    font-weight: bold;
+}
+
+#login-container p {
+    color: #6c757d; /* Bootstrap Muted Text */
+}
+
+#username, #country {
+    width: 50%;
+    padding: 10px;
+    border: 1px solid #ced4da; /* Bootstrap Border */
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+#join-button {
+    width: 50%;
+    background-color: #28a745; /* Bootstrap Primary */
+    color: white;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+#join-button:hover {
+    background-color: #0056b3;
+}
+
+button:focus, input:focus {
+    outline: 2px solid #218838;
+    outline-offset: 2px;
 }
 
 button {
@@ -35,6 +79,25 @@ button {
 
 button:hover {
     background-color: #218838;
+}
+
+/* Room Title */
+#room-title {
+    text-align: center;
+    font-size: 1.5rem;
+    color: #343a40; /* Bootstrap Dark Text */
+}
+
+/* User Info */
+#user-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #6c757d; /* Bootstrap Secondary */
+    color: black;
+    padding: 10px;
+    border-radius: 5px;
+    font-weight: bold;
 }
 
 #messages {
@@ -53,6 +116,16 @@ button:hover {
     word-wrap: break-word;
 }
 
+#voice-button {
+    background-color: green;
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+}
+
 @keyframes blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0; }
@@ -68,9 +141,9 @@ button:hover {
     }
 }
 
-button:focus, input:focus {
-    outline: 2px solid #218838;
-    outline-offset: 2px;
+
+#voice-button.active {
+    background-color: red;
 }
 
 .message.sent {
@@ -99,19 +172,4 @@ button:focus, input:focus {
 
 #messages::-webkit-scrollbar-thumb:hover {
     background-color: #aaa;
-}
-
-
-#voice-button {
-    background-color: green;
-    color: white;
-    border: none;
-    padding: 10px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-#voice-button.active {
-    background-color: red;
     }
