@@ -1,40 +1,70 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-app.js";
-import { getDatabase, ref, set, get, push, onChildAdded, onDisconnect, onValue } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-database.js";
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig } from './firebase-config.js?v=1'; // Force refresh in case of caching issues
+import { getDatabase, ref, set, get, push, onValue, query, orderByChild, onDisconnect, onChildAdded } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-database.js"; 
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const rtdb = getDatabase();
-
+const rtdb = getDatabase(app);
+const messagesRef = ref(rtdb, 'messages'); // Define the reference for messages
+const queryRef = query(messagesRef, orderByChild('timestamp'));
+const loadedMessageKeys = new Set();
 
 // Handle login
 const handleLogin = async () => {
-    const username = document.getElementById('username').value.trim();
-    const country = document.getElementById('country').value.trim();
+    try {
+        const username = document.getElementById('username').value.trim();
+        const country = document.getElementById('country').value.trim();
 
-    if (!username || !country) {
-        console.error("Login error: Username or country is empty");
-        return;
+        if (!username || !country) {
+            console.error("Login error: Username or country is empty");
+            return;
+        }
+
+        localStorage.setItem('username', username);
+        localStorage.setItem('country', country);
+
+        await setUserOnline(username);
+
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('chat-container').style.display = 'block';
+
+        loadMessages();
+    } catch (error) {
+        console.error("Error during login: ", error);
     }
-
-    localStorage.setItem('username', username);
-    localStorage.setItem('country', country);
-
-    await setUserOnline(username);
-
-    document.getElementById('login-container').style.display = 'none';
-    document.getElementById('chat-container').style.display = 'block';
-
-    loadMessages();
 };
 
 // Handle user leaving
 const handleUserLeaving = async () => {
     const username = localStorage.getItem('username');
     if (username) {
-        const userRef = ref(rtdb, `status/${username}`);
+        // Set user status to offline in Firebase
+        const userRef = ref(rtdb, `status/${sanitizeUsername(username)}`);
         await set(userRef, { status: "offline" });
+
+        // Clear local storage
+        localStorage.removeItem('username');
+        localStorage.removeItem('country');
     }
+};
+
+// Ensure the user is logged out when refreshing or closing the page
+window.addEventListener('beforeunload', handleUserLeaving);
+
+// Handle login and auto-login check
+const checkAutoLogin = async () => {
+    const username = localStorage.getItem('username');
+    const country = localStorage.getItem('country');
+
+    if (!username || !country) return; // If no username or country, do nothing
+
+    document.getElementById('username').value = username;
+    document.getElementById('country').value = country;
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('chat-container').style.display = 'block';
+
+    await setUserOnline(username);
+    loadMessages();
 };
 
 // Send message
@@ -44,9 +74,13 @@ const sendMessage = async () => {
     const username = localStorage.getItem('username');
     const country = localStorage.getItem('country');
 
+    if (!message) {
+        alert("Message cannot be empty!");
+        return;
+    }
+
     if (message && username && country) {
         try {
-            const messagesRef = ref(rtdb, 'messages');
             await push(messagesRef, {
                 username,
                 country,
@@ -60,38 +94,68 @@ const sendMessage = async () => {
     }
 };
 
-// Load messages
-const loadMessages = () => {
-    const messagesRef = ref(rtdb, 'messages');
+const loadMessages = async () => {
     const messagesDiv = document.getElementById('messages');
-    
-    onChildAdded(messagesRef, async (snapshot) => {
+    messagesDiv.innerHTML = ""; // Clear previous messages
+    loadedMessageKeys.clear(); // Reset stored keys
+
+    let messagesArray = [];
+
+    // Step 1: Fetch all existing messages first
+    const snapshot = await get(queryRef);
+    if (snapshot.exists()) {
+        snapshot.forEach(childSnapshot => {
+            const data = childSnapshot.val();
+            const key = childSnapshot.key;
+            if (!loadedMessageKeys.has(key)) {
+                loadedMessageKeys.add(key);
+                messagesArray.push({ key, ...data });
+            }
+        });
+
+        // Sort messages by timestamp and display them
+
+        messagesArray.sort((a, b) => a.timestamp - b.timestamp);
+        messagesArray.forEach(data => appendMessage(data));
+    }
+
+    // Step 2: Listen for new messages in real-time
+    onChildAdded(queryRef, (snapshot) => {
         const data = snapshot.val();
-        if (!data.username) return;
-
-        const status = await getUserStatus(data.username);
-        const userStatusDot = status === "online" ? "🟢" : "🔴";
-
-        messagesDiv.innerHTML += `<p><strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message}</p>`;
-        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+        const key = snapshot.key;
+        if (!loadedMessageKeys.has(key)) {
+            loadedMessageKeys.add(key);
+            appendMessage(data);
+        }
     });
 };
 
-// Auto-login check
-const checkAutoLogin = async () => {
-    const username = localStorage.getItem('username');
-    const country = localStorage.getItem('country');
-
-    if (!username || !country) return;
-
-    document.getElementById('username').value = username;
-    document.getElementById('country').value = country;
-    document.getElementById('login-container').style.display = 'none';
-    document.getElementById('chat-container').style.display = 'block';
-
-    await setUserOnline(username);
-    loadMessages();
+// Function to format timestamp into readable 12-hour time
+const formatTime = (timestamp) => {
+    const date = new Date(timestamp);
+    let hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12; // Convert 0 to 12-hour format
+    return `${hours}:${minutes} ${ampm}`;
 };
+
+// Function to append messages
+const appendMessage = async (data) => {
+    const messagesDiv = document.getElementById('messages');
+    if (!data.username) return;
+
+    const status = await getUserStatus(data.username);
+    const userStatusDot = status === "online" ? "🟢" : "🔴";
+    const time = formatTime(data.timestamp);
+
+    const messageElement = document.createElement("p");
+    messageElement.innerHTML = `<strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message} <span style="color: gray;">(${time})</span>`;
+
+    messagesDiv.appendChild(messageElement);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+};
+
 
 // Load page instantly
 document.addEventListener("DOMContentLoaded", checkAutoLogin);
@@ -100,30 +164,55 @@ document.getElementById('join-button').addEventListener('click', handleLogin);
 document.getElementById('send-button').addEventListener('click', sendMessage);
 
 const sanitizeUsername = (username) => {
-    return username.replace(/\./g, "_"); // Replace "." with "_"
+    return username.replace(/[.#$[\]]/g, "_"); // Replace invalid characters
 };
 
 const setUserOnline = async (username) => {
     if (!username) return;
-    
-    const safeUsername = sanitizeUsername(username); // Sanitize username
+
+    const safeUsername = sanitizeUsername(username);
     const userRef = ref(rtdb, `status/${safeUsername}`);
     const connectedRef = ref(rtdb, ".info/connected");
 
-    onValue(connectedRef, (snapshot) => {
-        if (snapshot.val() === false) return;
+    onValue(connectedRef, async (snapshot) => {
+        if (snapshot.val()) {
+            await set(userRef, { 
+                status: "online",
+                lastSeen: Date.now() 
+            });
 
-        set(userRef, { status: "online" });
-
-        onDisconnect(userRef).set({ status: "offline" });
+            onDisconnect(userRef).set({ 
+                status: "offline",
+                lastSeen: Date.now()
+            });
+        }
     });
+
+    // Update last seen periodically
+    setInterval(async () => {
+        await set(userRef, { 
+            status: "online", 
+            lastSeen: Date.now() 
+        });
+    }, 5000); // Update every 5 seconds
 };
 
 const getUserStatus = async (username) => {
     if (!username) return "offline";
 
-    const safeUsername = sanitizeUsername(username); // Sanitize username
+    const safeUsername = sanitizeUsername(username);
     const userRef = ref(rtdb, `status/${safeUsername}`);
     const snapshot = await get(userRef);
-    return snapshot.exists() ? snapshot.val().status : "offline";
+
+    if (!snapshot.exists()) return "offline";
+
+    const data = snapshot.val();
+    const now = Date.now();
+
+    // If last seen was more than 10 seconds ago, consider them offline
+    if (data.status === "online" && now - data.lastSeen > 10000) {
+        return "offline";
+    }
+
+    return data.status;
 };
