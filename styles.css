@@ -61,3 +61,57 @@ button:hover {
 #room-title {
     animation: blink 10s infinite;
 }
+
+@media (max-width: 480px) {
+    #login-container, #chat-container {
+        width: 90%;
+    }
+}
+
+button:focus, input:focus {
+    outline: 2px solid #218838;
+    outline-offset: 2px;
+}
+
+.message.sent {
+    text-align: right;
+    background-color: #e6ffe6;
+    border-radius: 10px 10px 0 10px;
+    margin: 5px 0;
+}
+
+.message.received {
+    text-align: left;
+    background-color: #f9f9f9;
+    border-radius: 10px 10px 10px 0;
+    margin: 5px 0;
+}
+
+
+#messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+#messages::-webkit-scrollbar-thumb {
+    background-color: #ccc;
+    border-radius: 10px;
+}
+
+#messages::-webkit-scrollbar-thumb:hover {
+    background-color: #aaa;
+}
+
+
+#voice-button {
+    background-color: green;
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+#voice-button.active {
+    background-color: red;
+    }
