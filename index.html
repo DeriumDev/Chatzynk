@@ -212,9 +212,16 @@
         </div>
     </div>
 
+<script>
+document.getElementById('username').addEventListener('input', function () {
+    // Remove non-alphabetic characters and limit to 9 characters
+    this.value = this.value.replace(/[^a-zA-Z]/g, '').slice(0, 9);
+});
+</script> 
+    
     <script>
     const voiceButton = document.getElementById('voice-button');
-const messageInput = document.getElementById('message-input');
+    const messageInput = document.getElementById('message-input');
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 recognition.lang = 'en-US';
