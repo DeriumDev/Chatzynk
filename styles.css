@@ -101,7 +101,8 @@ button:hover {
 }
 
 #messages {
-    height: 350px;
+    max-height: 55vh; /* 70% of the viewport height */
+    width: 93.3%;
     overflow-y: scroll;
     border: 1px solid #ddd;
     padding: 10px;
