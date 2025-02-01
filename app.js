@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-app.js";
 import { firebaseConfig } from './firebase-config.js?v=1'; // Force refresh in case of caching issues
-import { getDatabase, ref, set, get, push, onValue, query, orderByChild, onDisconnect, onChildAdded } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-database.js"; 
+import { getDatabase, ref, set, get, push, onValue, query, orderByChild, onDisconnect, onChildAdded, increment } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-database.js";
+
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -34,13 +35,20 @@ const handleLogin = async () => {
     }
 };
 
-// Handle user leaving
 const handleUserLeaving = async () => {
     const username = localStorage.getItem('username');
     if (username) {
         // Set user status to offline in Firebase
         const userRef = ref(rtdb, `status/${sanitizeUsername(username)}`);
-        await set(userRef, { status: "offline" });
+        await set(userRef, { status: "offline", lastSeen: Date.now() });
+
+        // Push a "user left" message
+        await push(messagesRef, {
+            username: "System",
+            country: "N/A",
+            message: `${username} has left the chat.`,
+            timestamp: Date.now()
+        });
 
         // Clear local storage
         localStorage.removeItem('username');
@@ -140,23 +148,32 @@ const formatTime = (timestamp) => {
     return `${hours}:${minutes} ${ampm}`;
 };
 
-// Function to append messages
 const appendMessage = async (data) => {
     const messagesDiv = document.getElementById('messages');
     if (!data.username) return;
 
     const status = await getUserStatus(data.username);
-    const userStatusDot = status === "online" ? "🟢" : "🔴";
+    const userStatusDot = status === "online" ? "<span class='small-dot'>🟢</span>" : "<span class='small-dot'>🔴</span>";
     const time = formatTime(data.timestamp);
 
+    const date = new Date(data.timestamp);
+    const formattedDate = date.toLocaleDateString();
+    const formattedDateTime = `${formattedDate} ${time}`;
+
     const messageElement = document.createElement("p");
-    messageElement.innerHTML = `<strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message} <span style="color: gray;">(${time})</span>`;
+
+    // Check if the message is a join or left notification
+    if (data.username === "System") {
+        messageElement.innerHTML = `<em>${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span></em>`;
+        messageElement.style.fontStyle = 'italic';
+        messageElement.style.color = data.message.includes("joined") ? 'green' : 'red';  // Green for joining, Red for leaving
+    } else {
+        messageElement.innerHTML = `<strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span>`;
+    }
 
     messagesDiv.appendChild(messageElement);
     messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
 };
-
-
 // Load page instantly
 document.addEventListener("DOMContentLoaded", checkAutoLogin);
 window.addEventListener('beforeunload', handleUserLeaving);
@@ -165,6 +182,17 @@ document.getElementById('send-button').addEventListener('click', sendMessage);
 
 const sanitizeUsername = (username) => {
     return username.replace(/[.#$[\]]/g, "_"); // Replace invalid characters
+};
+
+const setUserOffline = async (username) => {
+    const safeUsername = sanitizeUsername(username);
+    const userRef = ref(rtdb, `status/${safeUsername}`);
+    
+    // Explicitly set user status to offline if they leave or disconnect
+    await set(userRef, {
+        status: "offline",
+        lastSeen: Date.now()
+    });
 };
 
 const setUserOnline = async (username) => {
@@ -176,23 +204,26 @@ const setUserOnline = async (username) => {
 
     onValue(connectedRef, async (snapshot) => {
         if (snapshot.val()) {
+            // User is connected, set them as online
             await set(userRef, { 
                 status: "online",
-                lastSeen: Date.now() 
+                lastSeen: Date.now()
             });
 
-            onDisconnect(userRef).set({ 
+            // If user disconnects, set status to offline
+            onDisconnect(userRef).set({
                 status: "offline",
                 lastSeen: Date.now()
             });
         }
     });
 
-    // Update last seen periodically
+    // Periodically update the user's status to "online"
     setInterval(async () => {
-        await set(userRef, { 
-            status: "online", 
-            lastSeen: Date.now() 
+        const statusRef = ref(rtdb, `status/${safeUsername}`);
+        await set(statusRef, {
+            status: "online",
+            lastSeen: Date.now()
         });
     }, 5000); // Update every 5 seconds
 };
@@ -209,10 +240,30 @@ const getUserStatus = async (username) => {
     const data = snapshot.val();
     const now = Date.now();
 
-    // If last seen was more than 10 seconds ago, consider them offline
+    // If the last seen time was more than 10 seconds ago, consider them offline
     if (data.status === "online" && now - data.lastSeen > 10000) {
+        await set(userRef, {
+            status: "offline",
+            lastSeen: Date.now()
+        });
         return "offline";
     }
 
     return data.status;
 };
+
+const updateOnlineStatus = async () => {
+    const usersRef = ref(rtdb, 'status');
+
+    onValue(usersRef, (snapshot) => {
+        const users = snapshot.val();
+        const totalUsers = users ? Object.keys(users).length : 0;
+
+        // Update the title with "Discussion Room - Users: X"
+        document.getElementById('room-title').innerHTML = `Discussion Room - Users: ${totalUsers}`;
+    });
+};
+// Call this function on page load or after login
+document.addEventListener('DOMContentLoaded', updateOnlineStatus);
+
+
