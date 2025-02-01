@@ -167,11 +167,11 @@ const appendMessage = async (data) => {
 
     const messageElement = document.createElement("p");
 
-    if (data.username === "System" && data.message.includes("joined")) {
-        // Display only "User Joined" messages
+    if (data.username === "System" && data.message.includes("left")) {
+        // Display "User Left" messages
         messageElement.innerHTML = `<em>${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span></em>`;
         messageElement.style.fontStyle = 'italic';
-        messageElement.style.color = "green"; // Green for join notifications
+        messageElement.style.color = "red"; // Red for left notifications
     } else if (data.username !== "System") {
         // Display regular messages
         const status = await getUserStatus(data.username);
@@ -183,7 +183,6 @@ const appendMessage = async (data) => {
     messagesDiv.appendChild(messageElement);
     messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
 };
-
 
 // Load page instantly
 document.addEventListener("DOMContentLoaded", checkAutoLogin);
