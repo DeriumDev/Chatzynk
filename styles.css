@@ -172,4 +172,9 @@ button:hover {
 
 #messages::-webkit-scrollbar-thumb:hover {
     background-color: #aaa;
+}
+
+.small-dot {
+    font-size: 10px; /* Adjust size as needed */
+    vertical-align: middle;
     }
