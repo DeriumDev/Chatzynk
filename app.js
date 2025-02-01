@@ -29,6 +29,14 @@ const handleLogin = async () => {
         document.getElementById('login-container').style.display = 'none';
         document.getElementById('chat-container').style.display = 'block';
 
+        // Send "User Joined" notification
+        await push(messagesRef, {
+            username: "System",
+            country: "N/A",
+            message: `${username} has joined the chat.`,
+            timestamp: Date.now()
+        });
+
         loadMessages();
     } catch (error) {
         console.error("Error during login: ", error);
@@ -152,28 +160,30 @@ const appendMessage = async (data) => {
     const messagesDiv = document.getElementById('messages');
     if (!data.username) return;
 
-    const status = await getUserStatus(data.username);
-    const userStatusDot = status === "online" ? "<span class='small-dot'>🟢</span>" : "<span class='small-dot'>🔴</span>";
     const time = formatTime(data.timestamp);
-
     const date = new Date(data.timestamp);
     const formattedDate = date.toLocaleDateString();
     const formattedDateTime = `${formattedDate} ${time}`;
 
     const messageElement = document.createElement("p");
 
-    // Check if the message is a join or left notification
-    if (data.username === "System") {
+    if (data.username === "System" && data.message.includes("joined")) {
+        // Display only "User Joined" messages
         messageElement.innerHTML = `<em>${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span></em>`;
         messageElement.style.fontStyle = 'italic';
-        messageElement.style.color = data.message.includes("joined") ? 'green' : 'red';  // Green for joining, Red for leaving
-    } else {
+        messageElement.style.color = "green"; // Green for join notifications
+    } else if (data.username !== "System") {
+        // Display regular messages
+        const status = await getUserStatus(data.username);
+        const userStatusDot = status === "online" ? "🟢" : "🔴";
         messageElement.innerHTML = `<strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span>`;
     }
 
     messagesDiv.appendChild(messageElement);
     messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
 };
+
+
 // Load page instantly
 document.addEventListener("DOMContentLoaded", checkAutoLogin);
 window.addEventListener('beforeunload', handleUserLeaving);
