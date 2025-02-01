@@ -208,7 +208,7 @@
     atOptions = {
         'key' : 'fbf2a9ef35b48230cc5973acb04cc6bb',
         'format' : 'iframe',
-        'height' : 50, /* Ad height */
+        'height' : 55, /* Ad height */
         'width' : 320, /* Ad width */
         'params' : {}
     };
@@ -222,10 +222,10 @@
         adContainer.appendChild(script);
     };
 </script>
-      <h1 id="room-title" style="font-size: 16px;"></h1>
+      <h1 id="room-title" style="font-size: 14px;"></h1>
        <div id="user-info">
             <span id="user-details" style="font-weight: bold;"></span>
-            <span id="user-status" style="color: green;">Online</span>
+            <span id="user-status" style="color: green;">Online</span> <button id="share-button">📤</button>
         </div>
         <div id="messages"></div>
         <div style="display: flex; align-items: center;">
@@ -235,6 +235,24 @@
     <button id="voice-button"><i class="fas fa-microphone"></i></button>
    
  <script>
+document.getElementById('share-button').addEventListener('click', function () {
+    const username = document.getElementById('username').value.trim();
+    const url = window.location.href;
+    const message = `Join me on ChatZynk! My username is ${username}. Click here to chat: ${url}`;
+    
+    if (navigator.share) {
+        navigator.share({
+            title: 'ChatZynk - Join Chat',
+            text: message,
+            url: url
+        }).then(() => console.log('Shared successfully'))
+        .catch((error) => console.error('Sharing failed', error));
+    } else {
+        alert("Your browser does not support direct sharing.");
+    }
+});
+                
+                
 document.getElementById('username').addEventListener('input', function () {
     // Remove non-alphabetic characters and limit to 9 characters
     this.value = this.value.replace(/[^a-zA-Z]/g, '').slice(0, 9);
