@@ -175,7 +175,8 @@ const appendMessage = async (data) => {
     } else if (data.username !== "System") {
         // Display regular messages
         const status = await getUserStatus(data.username);
-        const userStatusDot = status === "online" ? "🟢" : "🔴";
+        const userStatusDot = status === "online" ? "<span class='small-dot'>🟢</span>" : "<span class='small-dot'>🔴</span>";
+
         messageElement.innerHTML = `<strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span>`;
     }
 
