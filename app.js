@@ -1,279 +1,68 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-app.js";
-import { firebaseConfig } from './firebase-config.js?v=1'; // Force refresh in case of caching issues
-import { getDatabase, ref, set, get, push, onValue, query, orderByChild, onDisconnect, onChildAdded, increment } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-database.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const rtdb = getDatabase(app);
-const messagesRef = ref(rtdb, 'messages'); // Define the reference for messages
-const queryRef = query(messagesRef, orderByChild('timestamp'));
-const loadedMessageKeys = new Set();
-
-// Handle login
-const handleLogin = async () => {
-    try {
-        const username = document.getElementById('username').value.trim();
-        const country = document.getElementById('country').value.trim();
-
-        if (!username || !country) {
-            console.error("Login error: Username or country is empty");
-            return;
-        }
-
-        localStorage.setItem('username', username);
-        localStorage.setItem('country', country);
-
-        await setUserOnline(username);
-
-        document.getElementById('login-container').style.display = 'none';
-        document.getElementById('chat-container').style.display = 'block';
-
-        // Send "User Joined" notification
-        await push(messagesRef, {
-            username: "System",
-            country: "N/A",
-            message: `${username} has joined the chat.`,
-            timestamp: Date.now()
-        });
-
-        loadMessages();
-    } catch (error) {
-        console.error("Error during login: ", error);
-    }
-};
-
-const handleUserLeaving = async () => {
-    const username = localStorage.getItem('username');
-    if (username) {
-        // Set user status to offline in Firebase
-        const userRef = ref(rtdb, `status/${sanitizeUsername(username)}`);
-        await set(userRef, { status: "offline", lastSeen: Date.now() });
-
-        // Push a "user left" message
-        await push(messagesRef, {
-            username: "System",
-            country: "N/A",
-            message: `${username} has left the chat.`,
-            timestamp: Date.now()
-        });
-
-        // Clear local storage
-        localStorage.removeItem('username');
-        localStorage.removeItem('country');
-    }
-};
-
-// Ensure the user is logged out when refreshing or closing the page
-window.addEventListener('beforeunload', handleUserLeaving);
-
-// Handle login and auto-login check
-const checkAutoLogin = async () => {
-    const username = localStorage.getItem('username');
-    const country = localStorage.getItem('country');
-
-    if (!username || !country) return; // If no username or country, do nothing
-
-    document.getElementById('username').value = username;
-    document.getElementById('country').value = country;
-    document.getElementById('login-container').style.display = 'none';
-    document.getElementById('chat-container').style.display = 'block';
-
-    await setUserOnline(username);
-    loadMessages();
-};
-
-// Send message
-const sendMessage = async () => {
-    const messageInput = document.getElementById('message-input');
-    const message = messageInput.value.trim();
-    const username = localStorage.getItem('username');
-    const country = localStorage.getItem('country');
-
-    if (!message) {
-        alert("Message cannot be empty!");
-        return;
-    }
-
-    if (message && username && country) {
-        try {
-            await push(messagesRef, {
-                username,
-                country,
-                message,
-                timestamp: Date.now()
-            });
-            messageInput.value = '';
-        } catch (error) {
-            console.error("Error sending message: ", error);
-        }
-    }
-};
-
-const loadMessages = async () => {
-    const messagesDiv = document.getElementById('messages');
-    messagesDiv.innerHTML = ""; // Clear previous messages
-    loadedMessageKeys.clear(); // Reset stored keys
-
-    let messagesArray = [];
-
-    // Step 1: Fetch all existing messages first
-    const snapshot = await get(queryRef);
-    if (snapshot.exists()) {
-        snapshot.forEach(childSnapshot => {
-            const data = childSnapshot.val();
-            const key = childSnapshot.key;
-            if (!loadedMessageKeys.has(key)) {
-                loadedMessageKeys.add(key);
-                messagesArray.push({ key, ...data });
-            }
-        });
-
-        // Sort messages by timestamp and display them
-
-        messagesArray.sort((a, b) => a.timestamp - b.timestamp);
-        messagesArray.forEach(data => appendMessage(data));
-    }
-
-    // Step 2: Listen for new messages in real-time
-    onChildAdded(queryRef, (snapshot) => {
-        const data = snapshot.val();
-        const key = snapshot.key;
-        if (!loadedMessageKeys.has(key)) {
-            loadedMessageKeys.add(key);
-            appendMessage(data);
-        }
-    });
-};
-
-// Function to format timestamp into readable 12-hour time
-const formatTime = (timestamp) => {
-    const date = new Date(timestamp);
-    let hours = date.getHours();
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12; // Convert 0 to 12-hour format
-    return `${hours}:${minutes} ${ampm}`;
-};
-
-const appendMessage = async (data) => {
-    const messagesDiv = document.getElementById('messages');
-    if (!data.username) return;
-
-    const time = formatTime(data.timestamp);
-    const date = new Date(data.timestamp);
-    const formattedDate = date.toLocaleDateString();
-    const formattedDateTime = `${formattedDate} ${time}`;
-
-    const messageElement = document.createElement("p");
-
-    if (data.username === "System" && data.message.includes("left")) {
-        // Display "User Left" messages
-        messageElement.innerHTML = `<em>${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span></em>`;
-        messageElement.style.fontStyle = 'italic';
-        messageElement.style.color = "red"; // Red for left notifications
-    } else if (data.username !== "System") {
-        // Display regular messages
-        const status = await getUserStatus(data.username);
-        const userStatusDot = status === "online" ? "<span class='small-dot'>🟢</span>" : "<span class='small-dot'>🔴</span>";
-
-        messageElement.innerHTML = `<strong>${data.username} (${data.country}):</strong> ${userStatusDot} ${data.message} <span style="color: gray; font-size: 0.70em;">(${formattedDateTime})</span>`;
-    }
-
-    messagesDiv.appendChild(messageElement);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
-};
-
-// Load page instantly
-document.addEventListener("DOMContentLoaded", checkAutoLogin);
-window.addEventListener('beforeunload', handleUserLeaving);
-document.getElementById('join-button').addEventListener('click', handleLogin);
-document.getElementById('send-button').addEventListener('click', sendMessage);
-
-const sanitizeUsername = (username) => {
-    return username.replace(/[.#$[\]]/g, "_"); // Replace invalid characters
-};
-
-const setUserOffline = async (username) => {
-    const safeUsername = sanitizeUsername(username);
-    const userRef = ref(rtdb, `status/${safeUsername}`);
-    
-    // Explicitly set user status to offline if they leave or disconnect
-    await set(userRef, {
-        status: "offline",
-        lastSeen: Date.now()
-    });
-};
-
-const setUserOnline = async (username) => {
-    if (!username) return;
-
-    const safeUsername = sanitizeUsername(username);
-    const userRef = ref(rtdb, `status/${safeUsername}`);
-    const connectedRef = ref(rtdb, ".info/connected");
-
-    onValue(connectedRef, async (snapshot) => {
-        if (snapshot.val()) {
-            // User is connected, set them as online
-            await set(userRef, { 
-                status: "online",
-                lastSeen: Date.now()
-            });
-
-            // If user disconnects, set status to offline
-            onDisconnect(userRef).set({
-                status: "offline",
-                lastSeen: Date.now()
-            });
-        }
-    });
-
-    // Periodically update the user's status to "online"
-    setInterval(async () => {
-        const statusRef = ref(rtdb, `status/${safeUsername}`);
-        await set(statusRef, {
-            status: "online",
-            lastSeen: Date.now()
-        });
-    }, 5000); // Update every 5 seconds
-};
-
-const getUserStatus = async (username) => {
-    if (!username) return "offline";
-
-    const safeUsername = sanitizeUsername(username);
-    const userRef = ref(rtdb, `status/${safeUsername}`);
-    const snapshot = await get(userRef);
-
-    if (!snapshot.exists()) return "offline";
-
-    const data = snapshot.val();
-    const now = Date.now();
-
-    // If the last seen time was more than 10 seconds ago, consider them offline
-    if (data.status === "online" && now - data.lastSeen > 10000) {
-        await set(userRef, {
-            status: "offline",
-            lastSeen: Date.now()
-        });
-        return "offline";
-    }
-
-    return data.status;
-};
-
-const updateOnlineStatus = async () => {
-    const usersRef = ref(rtdb, 'status');
-
-    onValue(usersRef, (snapshot) => {
-        const users = snapshot.val();
-        const totalUsers = users ? Object.keys(users).length : 0;
-
-        // Update the title with "Discussion Room - Users: X"
-        document.getElementById('room-title').innerHTML = `Discussion Room - Users: ${totalUsers}`;
-    });
-};
-// Call this function on page load or after login
-document.addEventListener('DOMContentLoaded', updateOnlineStatus);
-
-
+const { createClient } = window.supabase;
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+const EMOJIS = ['👥','💬','🎮','📚','🎵','⚽','❤️','🌍','🚀','🐱','🔥','🌸','🎉','☕','🕌','🎨'];
+let uid=null, me=null, active={type:null,id:null,other:null}, channel=null, realtime=null, allPeople={}, allGroups={}, friends=new Set(), blocked=new Set(), chosenEmoji='👥';
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toast = msg => { $('toast').textContent=msg; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),2600); };
+const countries = (()=>{const codes=`AC AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CP CR CU CV CW CX CY CZ DE DG DJ DK DM DO DZ EA EC EE EH ER ES ET FI FJ FK FO FR GA GB GD GE GF GG GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU IC ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW`.split(' ');return codes.map(c=>[c,new Intl.DisplayNames(['en'],{type:'region'}).of(c)]).filter(x=>x[1]&&x[0]!==x[1]).sort((a,b)=>a[1].localeCompare(b[1]));})();
+function fillCountries(){for(const id of ['profile-country','edit-country']){$(id).innerHTML='<option value="">Select country</option>'+countries.map(([c,n])=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');}}
+function showTab(tab){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==tab);$('conversation').hidden=true;}
+function showApp(){$('login').hidden=true;$('app').hidden=false;$('me-label').textContent=`${me.name} · ${me.country}`;document.body.dataset.theme=me.theme||'dark';}
+async function init(){
+ fillCountries();
+ if(!SUPABASE_URL.startsWith('https://')||SUPABASE_ANON_KEY.startsWith('YOUR_')){toast('Add Supabase URL and anon key in supabase-config.js');$('login').hidden=false;return;}
+ try{
+  let {data:{session}}=await supabase.auth.getSession();
+  if(!session){const r=await supabase.auth.signInAnonymously();if(r.error)throw r.error;session=r.data.session;}
+  uid=session.user.id;
+  const {data,error}=await supabase.from('profiles').select('*').eq('id',uid).maybeSingle();if(error)throw error;
+  if(data){me=data;await loadRelations();await setOnline();showApp();startListeners();}else $('login').hidden=false;
+ }catch(e){console.error(e);toast('Supabase connection failed: '+(e.message||'check setup'));$('login').hidden=false;}
+}
+async function loadRelations(){const [f,b]=await Promise.all([supabase.from('friendships').select('friend_id').eq('user_id',uid),supabase.from('blocks').select('blocked_id').eq('user_id',uid)]);friends=new Set((f.data||[]).map(x=>x.friend_id));blocked=new Set((b.data||[]).map(x=>x.blocked_id));}
+async function setOnline(){await supabase.from('profiles').update({online:true,last_seen:new Date().toISOString()}).eq('id',uid);}
+setInterval(()=>{if(uid) setOnline();},25000);
+document.addEventListener('visibilitychange',()=>{if(uid&&!document.hidden)setOnline();});
+window.addEventListener('beforeunload',()=>{if(uid)navigator.sendBeacon?.(SUPABASE_URL+'/rest/v1/profiles?id=eq.'+uid,new Blob([JSON.stringify({online:false,last_seen:new Date().toISOString()})],{type:'application/json'}));});
+$('save-profile').onclick=async()=>{const name=$('profile-name').value.trim(),gender=$('profile-gender').value,age=Number($('profile-age').value),country=$('profile-country').value;if(!name||!gender||!age||age<13||age>120||!country)return toast('Please complete all profile fields (age 13+).');me={id:uid,name,gender,age,country,online:true,last_seen:new Date().toISOString(),message_privacy:'everyone',notifications:true,theme:'dark'};const {error}=await supabase.from('profiles').insert(me);if(error)return toast('Profile save failed: '+error.message);showApp();startListeners();};
+function startListeners(){
+ loadRelations().then(()=>renderPeople());
+ supabase.from('profiles').select('*').then(({data})=>{allPeople=Object.fromEntries((data||[]).map(p=>[p.id,p]));renderPeople();renderChats();});
+ supabase.from('groups').select('*,group_members(user_id,role)').then(({data})=>{allGroups=Object.fromEntries((data||[]).map(g=>[g.id,{...g,members:Object.fromEntries((g.group_members||[]).map(m=>[m.user_id,m.role]))}]));renderGroups();});
+ realtime=supabase.channel('app-live').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},p=>{if(p.new?.id)allPeople[p.new.id]=p.new;renderPeople();renderChats();}).on('postgres_changes',{event:'*',schema:'public',table:'groups'},()=>refreshGroups()).on('postgres_changes',{event:'*',schema:'public',table:'group_members'},()=>refreshGroups()).subscribe();
+}
+async function refreshGroups(){const {data}=await supabase.from('groups').select('*,group_members(user_id,role)');allGroups=Object.fromEntries((data||[]).map(g=>[g.id,{...g,members:Object.fromEntries((g.group_members||[]).map(m=>[m.user_id,m.role]))}]));renderGroups();}
+function isOnline(p){return !!(p?.online&&p.last_seen&&Date.now()-new Date(p.last_seen).getTime()<60000);}
+async function renderPeople(){const ids=Object.keys(allPeople).filter(id=>id!==uid);$('people-count').textContent=`${ids.length} users`;$('people-list').innerHTML='';for(const id of ids){const p=allPeople[id],on=isOnline(p),isFriend=friends.has(id);const card=document.createElement('article');card.className='person card';card.innerHTML=`<div class="avatar">${esc((p.name||'?')[0].toUpperCase())}</div><div class="grow"><b>${esc(p.name)}</b><small>${esc(p.gender||'')} · ${esc(p.age||'')} · ${esc(p.country||'')}</small><small class="presence ${on?'on':''}">${on?'● Online':'● Offline'}</small></div><button data-chat="${id}">Chat</button><button data-friend="${id}">${isFriend?'✓ Friend':'+ Friend'}</button><button class="danger" data-block="${id}">Block</button>`;$('people-list').append(card);}
+ $('people-list').querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>openPrivate(b.dataset.chat));$('people-list').querySelectorAll('[data-friend]').forEach(b=>b.onclick=()=>toggleFriend(b.dataset.friend));$('people-list').querySelectorAll('[data-block]').forEach(b=>b.onclick=()=>blockUser(b.dataset.block));}
+async function toggleFriend(id){if(friends.has(id)){await supabase.from('friendships').delete().eq('user_id',uid).eq('friend_id',id);friends.delete(id);}else{const {error}=await supabase.from('friendships').insert({user_id:uid,friend_id:id});if(error)return toast(error.message);friends.add(id);}renderPeople();}
+async function blockUser(id){const {error}=await supabase.from('blocks').upsert({user_id:uid,blocked_id:id});if(error)return toast(error.message);blocked.add(id);toast('User blocked');renderPeople();}
+function renderGroups(){const list=$('group-list');list.innerHTML='';Object.values(allGroups).forEach(g=>{if(!g.members?.[uid])return;const count=Object.keys(g.members).length;const el=document.createElement('article');el.className='card group-card';el.innerHTML=`<div class="group-icon">${esc(g.icon||'👥')}</div><div class="grow"><b>${esc(g.name)}</b><small>${count} members · Group chat</small></div><button data-open-group="${g.id}">Open</button>`;list.append(el);});list.querySelectorAll('[data-open-group]').forEach(b=>b.onclick=()=>openGroup(b.dataset.openGroup));if(!list.children.length)list.innerHTML='<p class="empty">No groups yet. Create one to get started.</p>';}
+function renderChats(){const list=$('chat-list');if(!list)return;list.innerHTML='';Object.entries(allPeople).filter(([id])=>id!==uid).forEach(([id,p])=>{const key=[uid,id].sort().join('_');const el=document.createElement('article');el.className='card';el.innerHTML=`<div class="avatar">${esc((p.name||'?')[0])}</div><div class="grow"><b>${esc(p.name)}</b><small>Private chat</small></div><button data-chat="${id}">Open</button>`;list.append(el);});list.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>openPrivate(b.dataset.chat));}
+function privateId(other){return [uid,other].sort().join('_');}
+function openPrivate(other){if(blocked.has(other))return toast('Unblock this user to chat.');active={type:'private',id:privateId(other),other};openThread(allPeople[other]?.name||'Private chat',allPeople[other]?.country||'Private conversation');}
+function openGroup(id){const g=allGroups[id];if(!g?.members?.[uid])return toast('You are not a member of this group.');active={type:'group',id};openThread(`${g.icon||'👥'} ${g.name}`,`${Object.keys(g.members).length} members`);renderMemberStrip(g);}
+async function openThread(title,sub){$('conversation').hidden=false;document.querySelectorAll('.view').forEach(v=>v.hidden=true);$('conversation-title').textContent=title;$('conversation-subtitle').textContent=sub;$('thread').innerHTML='';$('members-strip').innerHTML='';if(channel)await supabase.removeChannel(channel);await loadMessages();const table=active.type==='group'?'messages':'messages';channel=supabase.channel('thread-'+active.type+'-'+active.id).on('postgres_changes',{event:'*',schema:'public',table,filter:active.type==='group'?`group_id=eq.${active.id}`:`conversation_id=eq.${active.id}`},()=>loadMessages()).subscribe();}
+async function loadMessages(){let q=supabase.from('messages').select('*').order('created_at',{ascending:true});q=active.type==='group'?q.eq('group_id',active.id):q.eq('conversation_id',active.id);const {data,error}=await q;if(error){console.error(error);return toast('Could not load messages: '+error.message);} $('thread').innerHTML='';for(const m of data||[])renderMessage(m);$('thread').scrollTop=$('thread').scrollHeight;}
+async function showMembers(g){const box=$('members-list');box.innerHTML='';for(const id of Object.keys(g.members||{})){const p=allPeople[id];if(!p)continue;const row=document.createElement('p');row.innerHTML=`${esc(p.name)} <small class="presence ${isOnline(p)?'on':''}">${isOnline(p)?'Online':'Offline'}</small> ${id!==uid?`<button data-dm="${id}">Private chat</button>`:''}`;box.append(row);}box.querySelectorAll('[data-dm]').forEach(b=>b.onclick=()=>{$('members-dialog').close();openPrivate(b.dataset.dm);});$('members-dialog').showModal();}
+function renderMemberStrip(g){const strip=$('members-strip');strip.innerHTML='<button id="show-members">👥 '+Object.keys(g.members).length+' members</button>';strip.querySelector('button').onclick=()=>showMembers(g);}
+function renderMessage(m){if(m.sender_id!==uid&&blocked.has(m.sender_id))return;if(active.type==='private'&&m.sender_id!==uid&&me.message_privacy==='friends'&&!friends.has(m.sender_id))return;const p=allPeople[m.sender_id]||{};const el=document.createElement('div');el.className='bubble '+(m.sender_id===uid?'mine':'');let body='';if(m.media_type==='image')body=`<img class="shared-image" src="${esc(m.media_url)}" alt="Shared image" loading="lazy">`;else if(m.media_type==='audio')body=`<audio controls src="${esc(m.media_url)}"></audio>`;if(m.body)body+=`<div>${esc(m.body)}</div>`;el.innerHTML=`${m.sender_id!==uid?`<small>${esc(p.name||'User')}</small>`:''}${body}<time>${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time>`;$('thread').append(el);}
+async function send(text,file){if(!active.id)return;const payload={sender_id:uid,body:text||'',group_id:active.type==='group'?active.id:null,conversation_id:active.type==='private'?active.id:null,media_type:null,media_url:null};if(file){if(file.size>15*1024*1024)return toast('File must be under 15 MB.');if(!file.type.startsWith('image/')&&!file.type.startsWith('audio/'))return toast('Only images and audio files are supported.');const path=`${uid}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;const {error:upErr}=await supabase.storage.from('chat-media').upload(path,file,{upsert:false,contentType:file.type});if(upErr)return toast('Upload failed: '+upErr.message);const {data}=supabase.storage.from('chat-media').getPublicUrl(path);payload.media_url=data.publicUrl;payload.media_type=file.type.startsWith('image/')?'image':'audio';}if(!payload.body&&!file)return;const {error}=await supabase.from('messages').insert(payload);if(error){console.error(error);toast('Message failed: '+error.message);}else{$('message-text').value='';$('media-input').value='';}}
+$('send-message').onclick=()=>send($('message-text').value.trim());$('message-text').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('send-message').click();}});$('media-input').onchange=e=>{const f=e.target.files[0];if(f)send('',f);};
+$('back-list').onclick=async()=>{if(channel)await supabase.removeChannel(channel);channel=null;$('conversation').hidden=true;showTab(active.type==='group'?'groups':'chats');};
+$('conversation-menu').onclick=async()=>{if(active.type!=='group')return toast('Use People to block or manage this contact.');const g=allGroups[active.id],isAdmin=g?.admin_id===uid;const choice=prompt(isAdmin?'Group options: add, rename, icon, members, leave, delete':'Group options: members, leave');if(!choice)return;if(choice==='members')showMembers(g);else if(choice==='add'&&isAdmin)addGroupMember(active.id);else if(choice==='leave')leaveGroup(active.id);else if(choice==='delete'&&isAdmin)deleteGroup(active.id);else if(choice==='rename'&&isAdmin){const n=prompt('New group name',g.name);if(n){await supabase.from('groups').update({name:n}).eq('id',active.id);refreshGroups();}}else if(choice==='icon'&&isAdmin){const e=prompt('Choose emoji: '+EMOJIS.join(' '),'👥');if(EMOJIS.includes(e)){await supabase.from('groups').update({icon:e}).eq('id',active.id);refreshGroups();}}};
+async function addGroupMember(id){const g=allGroups[id],available=Object.entries(allPeople).filter(([pid])=>pid!==uid&&!g.members[pid]);if(!available.length)return toast('No other profiles available.');const answer=prompt('Enter member number:\\n'+available.map(([pid,p],i)=>`${i+1}. ${p.name}`).join('\\n'));const n=Number(answer);if(!Number.isInteger(n)||n<1||n>available.length)return;const [memberId]=available[n-1];const {error}=await supabase.from('group_members').insert({group_id:id,user_id:memberId,role:'member'});if(error)toast(error.message);else{toast('Member added');refreshGroups();}}
+async function leaveGroup(id){const {error}=await supabase.from('group_members').delete().eq('group_id',id).eq('user_id',uid);if(error)return toast(error.message);$('conversation').hidden=true;showTab('groups');refreshGroups();toast('You left the group');}
+async function deleteGroup(id){if(!confirm('Delete this group and its messages for everyone?'))return;const {error}=await supabase.from('groups').delete().eq('id',id);if(error)return toast(error.message);$('conversation').hidden=true;showTab('groups');toast('Group deleted');refreshGroups();}
+$('create-group-open').onclick=()=>{$('group-name').value='';$('group-dialog').showModal();};
+$('emoji-choices').innerHTML=EMOJIS.map(e=>`<button type="button" data-emoji="${e}">${e}</button>`).join('');$('emoji-choices').onclick=e=>{const b=e.target.closest('[data-emoji]');if(b){chosenEmoji=b.dataset.emoji;$('emoji-choices').querySelectorAll('button').forEach(x=>x.classList.toggle('selected',x===b));}};
+$('create-group').onclick=async()=>{const name=$('group-name').value.trim();if(!name)return toast('Enter a group name.');const {data:g,error}=await supabase.from('groups').insert({name,icon:chosenEmoji,admin_id:uid}).select().single();if(error)return toast(error.message);const {error:memberError}=await supabase.from('group_members').insert({group_id:g.id,user_id:uid,role:'admin'});if(memberError)return toast(memberError.message);$('group-dialog').close();toast('Group created');refreshGroups();};
+$('profile-open').onclick=()=>{$('edit-name').value=me.name;$('edit-gender').value=me.gender;$('edit-age').value=me.age;$('edit-country').value=me.country;$('profile-dialog').showModal();};
+$('profile-save').onclick=async()=>{const name=$('edit-name').value.trim(),age=Number($('edit-age').value),country=$('edit-country').value,gender=$('edit-gender').value;if(!name||!age||age<13||age>120||!country)return toast('Complete profile details.');const patch={name,gender,age,country};const {error}=await supabase.from('profiles').update(patch).eq('id',uid);if(error)return toast(error.message);Object.assign(me,patch);$('me-label').textContent=`${name} · ${country}`;$('profile-dialog').close();toast('Profile updated');};
+$('settings-open').onclick=()=>{$('message-privacy').value=me.message_privacy||'everyone';$('notifications-toggle').checked=me.notifications!==false;$('theme-select').value=me.theme||'dark';$('settings-dialog').showModal();};
+$('settings-save').onclick=async()=>{const patch={message_privacy:$('message-privacy').value,notifications:$('notifications-toggle').checked,theme:$('theme-select').value};const {error}=await supabase.from('profiles').update(patch).eq('id',uid);if(error)return toast(error.message);Object.assign(me,patch);document.body.dataset.theme=me.theme;$('settings-dialog').close();toast('Settings saved');};
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+init();
